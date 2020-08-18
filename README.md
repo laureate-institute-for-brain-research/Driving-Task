@@ -24,3 +24,7 @@ Each task is implemented as a separate module which is then called by StimTool.
 
 
 **To change the number of trials, edit StimTool-Driving\Driving\DR_R1.schedule**
+
+
+
+## You can also go to [wiki](https://github.com/laureate-institute-for-brain-research/Driving-Task/wiki) for more information 
