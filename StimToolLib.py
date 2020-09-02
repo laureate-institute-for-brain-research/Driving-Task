@@ -721,8 +721,3 @@ def get_exam_number(session_params):
     g.output.write(exam)
     g.output.close()
     
-
-        
-        
-  
-  
