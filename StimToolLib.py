@@ -226,6 +226,22 @@ def wait_start(win):
     c = core.Clock()
     just_wait(c, 3)
 
+def load_inst_sounds(slides,directory,g):
+    isounds=[]
+    print(slides)
+    for i in range(len(slides)):
+        slide=slides[i]
+        if slide[1] == 'None':
+            s = None
+        else:
+            print('Loading Sound File: ' + os.path.join(directory, slide[1]))
+            if len(slide) == 4: #optional volume parameter
+                s = sound.Sound(value = os.path.join(directory, slide[1]), volume=float(slide[3]))
+            else:
+                s = sound.Sound(value = os.path.join(directory, slide[1]), volume=g.session_params['instruction_volume'])
+        isounds.append(s)
+    return isounds
+
 def run_instructions(instruct_schedule_file, g):
     #instructions from schedule file along with audio
     directory = os.path.dirname(instruct_schedule_file)

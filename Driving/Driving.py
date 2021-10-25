@@ -44,6 +44,8 @@ class GlobalVars:
         self.sound_beep2 = None
         self.A = -0.35 #equilibrium point--makes it so the subject has to continue holding the stick forward just a little to remain stopped at the line
         self.B = 15.0 #maximum speed in cm/s
+        self.C = 2  # 0 is very ICY, 2, is not so ICY, start at 2
+        self.dy = 0.0
         self.stick_move_threshold = 0.03 #threshold used to determine when the subject has responded on move-go trials, to flag false starts, and to start speed-and-stop trials
         self.move_go_speeds = [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.1, 0.15, 0.2, 0.25, 0.3] #possible speeds for the move/go task
         self.stop_y = 8 #vertical location of stop sign (in cm)
@@ -110,17 +112,20 @@ def update_car(): #update position of car based on joy position
     #    dt = g.this_t - g.last_t
     joy_y_pos = -g.joy.getY() #negate so that push is positive, pull is negative
     joy_x_pos = g.joy.getX() #save this value, just in case it ends up being interesting
-    dy =  (g.A*g.car.pos[1] + g.B*joy_y_pos) * dt #change in car position: A term gives resting point (at 0.35) and B gives velocity based on joystick position
+    #dy =  (g.A*g.car.pos[1] + g.B*joy_y_pos) * dt #change in car position: A term gives resting point (at 0.35) and B gives velocity based on joystick position
+
+    g.dy = g.B * joy_y_pos * dt * dt + (1 - g.C * dt) * g.dy
+
     #dy = 5 / 60.0
     now = g.clock.getTime()
     if g.response_period_start == None: #first response, record the time and mark the event
         g.response_period_start = now
         StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['RESPONSE_PERIOD_ONSET'], now, 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
-    StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['CAR_POSITION_AND_VELOCITY'], now, now - g.response_period_start, g.car.pos[1], dy * 60, False, g.session_params['parallel_port_address'])
+    StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['CAR_POSITION_AND_VELOCITY'], now, now - g.response_period_start, g.car.pos[1], g.dy * 60, False, g.session_params['parallel_port_address'])
     StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['STICK_X'], now, now - g.response_period_start, joy_x_pos, 'NA', False, g.session_params['parallel_port_address'])
     StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['STICK_Y'], now, now - g.response_period_start, joy_y_pos, 'NA', False, g.session_params['parallel_port_address'])
 
-    g.car.pos = [g.car.pos[0], g.car.pos[1] + dy] #update car position 
+    g.car.pos = [g.car.pos[0], g.car.pos[1] + g.dy] #update car position 
     #g.last_t = g.clock.getTime()
     g.win.flip()
 
@@ -234,7 +239,7 @@ def drive_car(duration, draw_timer):
             StimToolLib.just_wait(g.clock, g.clock.getTime() + 2)
     g.response_period_start = None #reset this for the next time--update_car will set g.response_period_start the first time it's called
             
-def speed_stop_trial():
+def speed_stop_trial(trial_length = 10):
     #g.win.flip() #display initial screen--car on bottom
     joy_pos = -g.joy.getY()
     if abs(joy_pos) > g.stick_move_threshold: #will be true if the subject was holding the stick off center at the end of the countdown
@@ -248,7 +253,7 @@ def speed_stop_trial():
         g.win.flip()
     g.response_period_start = g.clock.getTime()
     StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['RESPONSE_PERIOD_ONSET'], g.response_period_start, g.response_period_start - g.third_beep_time , 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
-    drive_car(10, True)
+    drive_car(trial_length, True)
     return True #success, move on to the next trial
     
 def speed_stop_block(n_trials):
@@ -269,6 +274,28 @@ def speed_stop_block(n_trials):
     g.time_text[1].autoDraw = False
     
     
+def speed_stop_block_traction(n_trials):
+    """
+    Function to run block with traction.
+    """
+    g.stop_sign.autoDraw = True
+    g.car.autoDraw = True
+    g.time_text[0].autoDraw = True
+    g.time_text[1].autoDraw = True
+    for i in range(n_trials):
+        # set trial duration
+        # trial_length = random.choice([9,10,11])
+        trial_length = 10 # All trials are 10 seconds
+        success = False
+        while not success: #keep repeating while subject has false starts
+            three_beeps(n_trials - i)
+            success = speed_stop_trial(trial_length)
+            StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
+        g.trial = g.trial + 1 #increment trial number
+    g.car.autoDraw = False
+    g.stop_sign.autoDraw=False
+    g.time_text[0].autoDraw = False
+    g.time_text[1].autoDraw = False
     
 def run_instructions(instruct_schedule_file, g):
     #instructions from schedule file along with audio
@@ -282,6 +309,141 @@ def run_instructions(instruct_schedule_file, g):
     i = 0
     while i < len(slides):
         i = max(0, i + do_one_slide(slides[i], directory, g)) #do_one_slide may increment or decrement i, depending on whether 'enter' or 'backspace' is pressed
+
+
+def run_instructions_joystick(instruct_schedule_file, g):
+    # Instruction for using joysrick
+    #core.rush(True)
+    directory = os.path.dirname(instruct_schedule_file)
+    fin = open(instruct_schedule_file, 'r')
+    lines = fin.readlines()
+    fin.close()
+    slides = []
+    for i in lines:
+        slides.append(i.split(','))
+    isounds=StimToolLib.load_inst_sounds(slides,directory,g)
+    i = 0
+    g.triggered = False
+    while i < len(slides):
+        i = max(i + do_one_slide_joystick(slides[i], isounds[i], directory, g), 0) #do_one_slide may increment or decrement i, depending on whether session_params['right'] or session_params['left'] is pressed--don't let them go back on the first slide
+    #core.rush(Fals
+
+def do_one_slide_joystick(slide, isound, directory, g):
+    """
+    
+    """
+    if slide[0] == 'DEMO':
+        g.car.pos = g.car_start_pos#reset car position
+        g.stop_sign.autoDraw = True
+        g.car.autoDraw = True
+        try:
+            while g.car.pos[1] < 2.85:
+                StimToolLib.check_for_esc()
+                g.car.pos = [0, min(g.car.pos[1] + g.B / 120, 2.85)] #g.B is maximum speed in cm/s--go at half speed for demo
+                g.win.flip()
+            StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
+        except StimToolLib.QuitException:
+            g.stop_sign.autoDraw = False
+            g.car.autoDraw = False
+            return -1
+        g.stop_sign.autoDraw = False
+        g.car.autoDraw = False
+        g.win.flip()
+        return 1
+    if slide[0] == 'PRACTICE':
+        g.car.pos = g.car_start_pos
+        g.stop_sign.autoDraw = True
+        g.car.autoDraw = True
+        g.win.flip() #display initial screen--car on bottom
+        try:
+            drive_car(20, False)
+        except StimToolLib.QuitException:
+            g.car.autoDraw = False
+            g.stop_sign.autoDraw = False
+            return -1
+        g.car.autoDraw = False
+        g.stop_sign.autoDraw = False
+        g.win.flip()
+        return 1
+    image = visual.ImageStim(g.win, image=os.path.join(directory, slide[0]), units = 'pix')
+    try:
+        image.size = [ g.session_params['screen_x'], g.session_params['screen_y'] ]
+    except:
+        pass
+    s=isound
+    advance_time = float(slide[2])
+    #if it's -1, don't advance, if it's 0, advance at the end of the sound, if it's positive, advance after that amount of time
+    wait_z = False
+    if advance_time == -1:
+        advance_time = float('inf')
+    elif advance_time == 0:
+        try:
+            advance_time = s.getDuration()
+        except AttributeError: #in case there is a None in stead of a sound, just set duration to 0.5
+            advance_time = 0.5
+    elif advance_time == -2: #wait for a 'z' to advance
+        advance_time = float('inf')
+        wait_z = True
+    
+    image.draw()
+    g.win.flip()
+    k = None #initialize k
+    if s:
+        s.play()
+        advance_time = advance_time - s.getDuration() #since we're waiting for the duration of s, decrease advance_time by that amount--allows for e.g. advance_time of 5s with a sound of 3s->wait 2s after the sound ends
+        k = event.waitKeys(keyList = ['z', 'a', 'escape'], maxWait=s.getDuration()) #force the subject to listen to all of the instructions--allow 'z' to skip them or 'a' to force back
+    if not k: #if skipped instructions, don't wait to advance afterword
+        if g.session_params['allow_instructions_back']: #only allow back if it's specified in the session parameters
+            kl = [g.session_params['left'], g.session_params['right'], 'escape', 'z', 'a']
+        else:
+            kl = [g.session_params['right'], 'escape', 'z', 'a']
+        if wait_z: #only advance for a 'z'
+            kl = ['z', 'a']
+        
+        timeout=False
+        now=g.clock.getTime()       
+        try:
+            g.joystick = joystick.Joystick(0) 
+            while 1:
+                #if not g.session_params['joystick']: break # Break out of this if wer're not using a joystick
+                if g.clock.getTime() > now + advance_time:
+                    timeout=True 
+                    break
+                k=event.getKeys(keyList = kl)
+                if k!=[]:
+                    break
+                if g.joystick.getButton(g.session_params['joy_forward']) or g.joystick.getButton(g.session_params['joy_backward']):
+                    break
+                image.draw()
+                event.clearEvents()
+                g.win.flip()
+        except (AttributeError,IndexError):
+            k = event.waitKeys(keyList = kl, maxWait=advance_time)
+
+    if s: #stop the sound if it's still playing
+        s.stop()
+    try:
+        if g.joystick.getButton(g.session_params['joy_forward']) or timeout:
+            retval = 1
+        elif g.joystick.getButton(g.session_params['joy_backward']):
+            retval = -1
+    except (AttributeError, UnboundLocalError, IndexError):
+        joystick_not_used=True
+                
+    if k == None or k == []: #event timeout
+        print('')
+    elif k[0] == 'z':
+        retval = 1
+    elif k[0] == 'a':
+        retval = -1
+    elif k[0] == g.session_params['right']:
+        print(k[0])
+        retval = 1
+    elif k[0] == g.session_params['left']:
+        retval = -1
+    elif k[0] == 'escape':
+        raise QuitException()
+    return retval
 
 def do_one_slide(slide, directory, g):
     if slide[0] == 'DEMO':
@@ -362,14 +524,14 @@ def do_one_slide(slide, directory, g):
     
     
 def move_go_instruct(n_trials):
-    run_instructions(os.path.join(os.path.dirname(__file__), 'media', 'instructions', 'DR_instruct_schedule_MG.csv'), g)
+    run_instructions_joystick(os.path.join(os.path.dirname(__file__), 'media', 'instructions', 'DR_instruct_schedule_MG.csv'), g)
     if g.session_params['scan']:
         StimToolLib.wait_scan_start(g.win)
     else:
         StimToolLib.wait_start(g.win)
     
 def speed_stop_instruct(n_trials):
-    run_instructions(os.path.join(os.path.dirname(__file__), 'media', 'instructions', 'DR_instruct_schedule_SS.csv'), g)
+    run_instructions_joystick(os.path.join(os.path.dirname(__file__), 'media', 'instructions', 'DR_instruct_schedule_JOY_SS.csv'), g)
     if g.session_params['scan']:
         StimToolLib.wait_scan_start(g.win)
     else:
@@ -395,10 +557,34 @@ def do_one_block(block_type, block_length):
     if block_type == '3': #speed_stop_block
         g.trial_type = 3 #set trial type for output for this block
         speed_stop_block(block_length)
+
+    # Speed Stop with differente traction
+    # foramt for block type would be something like 30a, 32b, 31c
+    # 1st digit means it's a speed stop block
+    # 2nd digit means it's the traction control value (g.C)
+    if (len(block_type) == 2):
+        g.trial_type = block_type
+
+        # Ths LSB is the traction g.C value. 30 = 0, 31 = 1, 32 = 2
+        g.C = float(block_type[1])
+    
+        speed_stop_block_traction(block_length)
+
     if block_type == '4': #break
         start_time = g.clock.getTime()
         StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['BREAK_ONSET'], start_time, 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
         StimToolLib.show_instructions(g.win, ['Now please take a 5 second break'])
+        end_time = g.clock.getTime()
+        StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['BREAK_END'], end_time, end_time - start_time, 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
+        g.win.flip()
+    
+    if block_type == '5': #break with fixation , specified duration
+        start_time = g.clock.getTime()
+        StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['BREAK_ONSET'], start_time, 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
+        g.win.flip()
+        g.fix.draw()
+        g.win.flip()
+        StimToolLib.just_wait(g.clock,start_time + float(block_length) )
         end_time = g.clock.getTime()
         StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['BREAK_END'], end_time, end_time - start_time, 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
         g.win.flip()
@@ -462,6 +648,12 @@ def run_try():
     StimToolLib.get_var_dict_from_file(os.path.join(os.path.dirname(__file__), param_file), g.run_params)
     g.prefix = StimToolLib.generate_prefix(g)
     fileName = os.path.join(g.prefix + '.csv')
+
+    # Set Params if any
+    try:
+        g.stick_move_threshold = g.run_params['stick_move_threshold']
+    except:
+        pass
     
     #g.prefix = 'DR-' + g.session_params['SID'] + '-Admin_' + g.session_params['raID'] + '-run_' + str(g.run_params['run']) + '-' + start_time 
     #fileName = os.path.join(os.path.dirname(__file__), 'data/' + g.prefix +  '.csv')
@@ -476,12 +668,12 @@ def run_try():
     g.bar_blue = visual.ImageStim(g.win, os.path.join(os.path.dirname(__file__),'media/bar_blue.png'), pos=(g.bar_x, 0), units='pix')
     g.stop_sign = visual.ImageStim(g.win, os.path.join(os.path.dirname(__file__),'media/stop.png'), pos=(0, g.stop_y), units='cm', interpolate=True)
     g.target = visual.ImageStim(g.win, os.path.join(os.path.dirname(__file__),'media/circle_white.png'), pos=[6, 0], units='cm')
-    g.sound_correct = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/correctsound.wav'), volume=0.08)
-    g.sound_error = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/errorsound.wav'), volume=0.08)
-    g.sound_double_error = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/doubleerrorsound.wav'), volume=0.08)
-    g.sound_beep1 = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/beep1.wav'), volume=0.08)
-    g.sound_beep2 = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/beep2.wav'), volume=0.08)
-    g.sound_timeout = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/timeoutsound.wav'), volume=0.08)
+    g.sound_correct = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/correctsound.aiff'), volume=0.08)
+    g.sound_error = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/errorsound.aiff'), volume=0.08)
+    g.sound_double_error = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/doubleerrorsound.aiff'), volume=0.08)
+    g.sound_beep1 = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/beep1.aiff'), volume=0.08)
+    g.sound_beep2 = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/beep2.aiff'), volume=0.08)
+    g.sound_timeout = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/timeoutsound.aiff'), volume=0.08)
     
     g.time_text.append(visual.TextStim(g.win, text="10s", units='pix', height=25, color=[1,1,1], pos=[g.bar_x + 45,550]))
     g.time_text.append(visual.TextStim(g.win, text="0s", units='pix', height=25, color=[1,1,1], pos=[g.bar_x + 45,0]))
@@ -495,10 +687,6 @@ def run_try():
     for i in range(len(block_types)):     
         do_one_block(block_types[i], int(block_lengths[i]))
 
-    
-    
-    
-  
- 
+
 
 
