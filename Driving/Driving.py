@@ -589,6 +589,29 @@ def do_one_block(block_type, block_length):
         end_time = g.clock.getTime()
         StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['BREAK_END'], end_time, end_time - start_time, 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
         g.win.flip()
+
+    if (len(block_type) == 3):
+        # Break Fixation with text on top
+        # the 2 index determines what traction to say
+        start_time = g.clock.getTime()
+        g.win.flip()
+        StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['BREAK_ONSET'], start_time, 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
+        text_dict = {
+            '0': "This is a low traction block",
+            '1': "This is a medium tracton block",
+            '2': "This is a high traction block"
+        }
+
+        g.toptext.text = text_dict[block_type[2]]
+        g.toptext.draw()
+        g.fix.draw()
+        g.win.flip()
+        StimToolLib.just_wait(g.clock,start_time + float(block_length) )
+        end_time = g.clock.getTime()
+        StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['BREAK_END'], end_time, end_time - start_time, 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
+        g.win.flip()
+
+
     StimToolLib.just_wait(g.clock, g.clock.getTime() + 1) #one second pause at the end of each block so the next one doesn't start immediately
 
 def run(session_params, run_params):
@@ -680,6 +703,7 @@ def run_try():
     g.time_text.append(visual.TextStim(g.win, text="0s", units='pix', height=25, color=[1,1,1], pos=[g.bar_x + 45,0]))
     
     g.fix = visual.TextStim(g.win, text="X", units='pix', height=50, color=[1,1,1], pos=[0,0], bold=True)
+    g.toptext = visual.TextStim(g.win, text="", units='pix', height=50, color=[1,1,1], pos=[0,200], bold=True)
     
     StimToolLib.task_start(StimToolLib.DRIVE_CODE, g)
     g.win.flip()
