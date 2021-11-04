@@ -285,6 +285,7 @@ def speed_stop_block_traction(n_trials):
     for i in range(n_trials):
         # set trial duration
         # trial_length = random.choice([9,10,11])
+        g.dy = 0
         trial_length = 10 # All trials are 10 seconds
         success = False
         while not success: #keep repeating while subject has false starts
