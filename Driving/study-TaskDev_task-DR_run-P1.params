@@ -1,0 +1,3 @@
+run_id __DR-RP1-_BEH
+stick_move_threshold .09
+instruction_schedule study-TaskDev_task-DR_run-P1_instructschedule.csv

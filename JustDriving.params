@@ -1,9 +1,0 @@
-up up
-down down
-left left
-right right
-select space
-auto_advance True
-session_id T0
-output_dir 'C:/StimTool/data/'
-redirect_output True

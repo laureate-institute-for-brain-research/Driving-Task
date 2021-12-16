@@ -1,5 +1,5 @@
 
-import StimToolLib, os, random, operator, math, copy
+import StimToolLib, os, random, operator, math, copy, time
 from psychopy import visual, core, event, data, gui, sound
 from fractions import Fraction #to make definition of probability distributions more intuitive
 from psychopy.hardware import joystick
@@ -11,7 +11,7 @@ class GlobalVars:
     #This way, all of the variables that need to be accessed in several functions don't need to be passed in as parameters
     #It also avoids needing to declare every global variable global at the beginning of every function that wants to use it
     def __init__(self):
-        self.win = None #the window where everything is drawn
+        self.win = None #the window where everything is drawns
         self.clock = None #global clock used for timing
         self.x = None #X fixation stimulus
         self.output = None #The output file
@@ -27,8 +27,8 @@ class GlobalVars:
         #self.circles_green = [] #green circles used to show correct response
         self.bar_red = None
         self.bar_green = None #red and green point bars
-        self.bar_x = -350 #x location of time bar (should be just left of stop line)
-        self.bar_width = 50 #width of the time bar
+        self.bar_x = -.7 #x location of time bar (should be just left of stop line)
+        self.bar_width = .08 #width of the time bar
         self.trial = None #trial number
         self.trial_type = None #current trial type
         self.break_instructions = ['''You may now take a short break.''']
@@ -37,26 +37,37 @@ class GlobalVars:
         self.block_correct = 0 #number of correct responses in this block
         self.direction_text = None #will be right or left
         self.car = None #car stimulus
+        self.motorcycle = None #motorcycle stimulus
+        self.vehicle = None #current vehicle stimulus
         self.joy = None #joystick object
-        self.car_start_pos = [0, -8] #starting position for the car (in cm, both trial types)
+        self.vehicle_start_pos = [0, -8] #starting position for the car (in cm, both trial types)
         self.target = None #white circle used in move/go trials
         self.sound_beep1 = None #beeps for countdown timers
         self.sound_beep2 = None
+        self.condition = 'sensitivity' # Use for differente trial types, other option is 'velocity'
+
+        # Dictionary for mapping schedule block types to self.B
+        self.sensitivity_map  = {
+                '0': 7.5, # Low Sensitivity
+                '1': 15, # Medium Sensitivty # the default
+                '2': 22.5, #  High Sensitivity
+            }
         self.A = -0.35 #equilibrium point--makes it so the subject has to continue holding the stick forward just a little to remain stopped at the line
-        self.B = 15.0 #maximum speed in cm/s
+        self.B = 15.0 #maximum speed in cm/s # gets set for diffenete sensitifity changes
         self.C = 2  # 0 is very ICY, 2, is not so ICY, start at 2
         self.dy = 0.0
         self.stick_move_threshold = 0.03 #threshold used to determine when the subject has responded on move-go trials, to flag false starts, and to start speed-and-stop trials
         self.move_go_speeds = [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.1, 0.15, 0.2, 0.25, 0.3] #possible speeds for the move/go task
         self.stop_y = 8 #vertical location of stop sign (in cm)
         self.stop_sign = None #sign used for speed-stop trials
-        self.time_bar_max_height = 550 #maximum height of time bar (in pixels)
+        self.time_bar_max_height = 1 #maximum height of time bar, should be half the screen height (in norm)
         self.time_text = [] #10s and 0s--text next to timer bar
         self.target_pos = 3.35 #position to change colors
         self.response_period_start = None #will keep track of when the current response period began--used to compute response time in output
         self.last_t = None
 
-event_types = {'INSTRUCT_ONSET':1,
+event_types = {
+    'INSTRUCT_ONSET':1,
     'TASK_ONSET':2,
     'BEEP':3, 
     'DELAY_ONSET':4, 
@@ -69,7 +80,8 @@ event_types = {'INSTRUCT_ONSET':1,
     'MOTION_RESPONSE_END':11,
     'BREAK_ONSET':12,
     'BREAK_END':13,
-    'TASK_END':StimToolLib.TASK_END}
+    'TASK_END':StimToolLib.TASK_END
+    }
 
 
 def update_target_and_wait(duration):
@@ -82,7 +94,7 @@ def update_target_and_wait(duration):
         now = g.clock.getTime()
 
 def three_beeps(trials_left):
-    g.car.pos = g.car_start_pos#reset car position
+    g.vehicle.pos = g.vehicle_start_pos#reset car position
     g.msg.setText(str(trials_left) + ' trial(s) left in this block')
     g.msg.autoDraw = True
     g.timer_msg.setText('Trial starts in 2s')
@@ -105,32 +117,55 @@ def three_beeps(trials_left):
     StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['BEEP'], g.third_beep_time, 'NA', 'NA', 1, g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
 
 def update_car(): #update position of car based on joy position
-    t1 = g.clock.getTime()
-    dt = 1.0/60 #based on a single frame--assumes 60 hz frame rate
-    #g.this_t = g.clock.getTime()
-    #if not g.last_t == None:
-    #    dt = g.this_t - g.last_t
+    """
+    Function that udpates the car
+    """
+    #t1 = g.clock.getTime()
+    #dt = 1.0/60 #based on a single frame--assumes 60 hz frame rate
+    now = g.clock.getTime()
+    g.this_t = now #g.clock.getTime()
+    if not g.last_t == None:
+        dt = g.this_t - g.last_t
+    else:
+        dt = 1.0/60 #based on a single frame--assumes 60 hz frame rate
+    
+  
     joy_y_pos = -g.joy.getY() #negate so that push is positive, pull is negative
     joy_x_pos = g.joy.getX() #save this value, just in case it ends up being interesting
-    #dy =  (g.A*g.car.pos[1] + g.B*joy_y_pos) * dt #change in car position: A term gives resting point (at 0.35) and B gives velocity based on joystick position
+    
+    #g.grating.setPos((joy_x_pos - 1 , joy_y_pos))
 
-    g.dy = g.B * joy_y_pos * dt * dt + (1 - g.C * dt) * g.dy
+    if g.condition == 'velocity':
+        # Velocity Condition, also the default condition
+        g.dy =  (g.A*g.vehicle.pos[1] + g.B*joy_y_pos) * dt #change in car position: A term gives resting point (at 0.35) and B gives velocity based on joystick position
+     
+    else:
+
+        # Scanner Joystick has lower angle
+        # Current Designs Joystck Angle is full 30 degrees
+        # Practice Joystick - Logitech Extreme 3D Pro is 40 degrees
+        if g.session_params['scan']: 
+            joy_y_pos = joy_y_pos * 0.75
+        # ICY Condition
+        g.dy = g.B * joy_y_pos * dt * dt + (1 - g.C * dt) * g.dy  # Icy C
+        
+    
 
     #dy = 5 / 60.0
-    now = g.clock.getTime()
+    #now = g.clock.getTime()
     if g.response_period_start == None: #first response, record the time and mark the event
         g.response_period_start = now
         StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['RESPONSE_PERIOD_ONSET'], now, 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
-    StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['CAR_POSITION_AND_VELOCITY'], now, now - g.response_period_start, g.car.pos[1], g.dy * 60, False, g.session_params['parallel_port_address'])
+    StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['CAR_POSITION_AND_VELOCITY'], now, now - g.response_period_start, g.vehicle.pos[1], g.dy * 60, False, g.session_params['parallel_port_address'])
     StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['STICK_X'], now, now - g.response_period_start, joy_x_pos, 'NA', False, g.session_params['parallel_port_address'])
     StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['STICK_Y'], now, now - g.response_period_start, joy_y_pos, 'NA', False, g.session_params['parallel_port_address'])
 
-    g.car.pos = [g.car.pos[0], g.car.pos[1] + g.dy] #update car position 
-    #g.last_t = g.clock.getTime()
+    g.vehicle.pos = [g.vehicle.pos[0], g.vehicle.pos[1] + g.dy] #update car position 
+    g.last_t = now
+    #g.grating.draw()
     g.win.flip()
 
-    
-    
+
 def update_target_pos():
     g.target.pos = [g.target.pos[0], -g.joy.getY() * 5] #target position: will range from -5 to 5 cm
 def move_go_trial(speed):
@@ -158,14 +193,14 @@ def move_go_trial(speed):
         joy_pos = -g.joy.getY()
         StimToolLib.check_for_esc()
         g.target.pos = [g.target.pos[0], joy_pos * 5] #target position: will range from -5 to 5 cm
-        g.car.pos = [g.car.pos[0], g.car.pos[1] + motion_per_frame] #update car position 
+        g.vehicle.pos = [g.vehicle.pos[0], g.vehicle.pos[1] + motion_per_frame] #update car position 
         g.win.flip()
         if not recorded_motion_start: #record motion start here so it is *after* the first flip() with the car moved--slightly more accurate (1-16ms) than if this were before the loop
             recorded_motion_start = True
             motion_start_time = g.clock.getTime()
             StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['MOTION_ONSET'], motion_start_time, 'NA', 'NA', speed, g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
     g.response_period_start = g.clock.getTime()
-    StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['RESPONSE_PERIOD_ONSET'], g.response_period_start, g.response_period_start - motion_start_time , 'NA', g.car.pos[1] + 8, g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
+    StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['RESPONSE_PERIOD_ONSET'], g.response_period_start, g.response_period_start - motion_start_time , 'NA', g.vehicle.pos[1] + 8, g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
     done = False
     complete_press_time = None #keep track of when the joy stick made it to the end
     while not done:
@@ -188,7 +223,8 @@ def move_go_trial(speed):
     #start moving the car and wait for response
 
 def move_go_block(n_trials):
-    g.car.autoDraw = True
+    g.vehicle = g.car
+    g.vehicle.autoDraw = True
     #g.target.autoDraw = True
     random.shuffle(g.move_go_speeds)
     speed_idx = 0 #keep track of which speed is next--will be reset to 0 when all speeds have been used
@@ -204,13 +240,13 @@ def move_go_block(n_trials):
             update_target_and_wait(1)
         g.trial = g.trial + 1
         speed_idx = speed_idx + 1
-    g.car.autoDraw = False
+    g.vehicle.autoDraw = False
     #g.target.autoDraw = False
     
 def update_timer(time_elapsed):
     #draws the timer bar: with time_elapsed=0, should be full length and with time_elapsed=10 will be gone
     #will be blue or green depending on car position (far from or close to stop sign)
-    if g.target_pos - g.car.pos[1] > 3 or g.target_pos < g.car.pos[1]:
+    if g.target_pos - g.vehicle.pos[1] > 3 or g.target_pos < g.vehicle.pos[1]:
         pt_bar = g.bar_blue
     else:
         pt_bar = g.bar_green
@@ -239,36 +275,49 @@ def drive_car(duration, draw_timer):
             StimToolLib.just_wait(g.clock, g.clock.getTime() + 2)
     g.response_period_start = None #reset this for the next time--update_car will set g.response_period_start the first time it's called
             
-def speed_stop_trial(trial_length = 10):
+
+
+def speed_stop_trial(trial_length = 10, threshold=True):
+    #TODO make threshold a config param
     #g.win.flip() #display initial screen--car on bottom
     joy_pos = -g.joy.getY()
-    if abs(joy_pos) > g.stick_move_threshold: #will be true if the subject was holding the stick off center at the end of the countdown
-            g.sound_error.play()
-            StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['FALSE_START'], g.clock.getTime(), 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
-            StimToolLib.just_wait(g.clock, g.clock.getTime() + 3)
-            return False #will cause this trial to be repeated
-    #wait for response to begin the trial
-    while abs(g.joy.getY()) < g.stick_move_threshold:
-        StimToolLib.check_for_esc()
-        g.win.flip()
+    g.last_t = None
+    # If threshold is set, then check move threshold to repeat
+    # If not, then then don't check if in middle
+    if threshold:
+        if abs(joy_pos) > g.stick_move_threshold: #will be true if the subject was holding the stick off center at the end of the countdown
+                g.sound_error.play()
+                StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['FALSE_START'], g.clock.getTime(), 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
+                StimToolLib.just_wait(g.clock, g.clock.getTime() + 3)
+                return False #will cause this trial to be repeated
+        #wait for response to begin the trial
+        while abs(g.joy.getY()) < g.stick_move_threshold:
+            StimToolLib.check_for_esc()
+            g.win.flip()
     g.response_period_start = g.clock.getTime()
     StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['RESPONSE_PERIOD_ONSET'], g.response_period_start, g.response_period_start - g.third_beep_time , 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
     drive_car(trial_length, True)
     return True #success, move on to the next trial
     
+
+
+
+
 def speed_stop_block(n_trials):
+    
+    g.vehicle = g.car
     g.stop_sign.autoDraw = True
-    g.car.autoDraw = True
+    g.vehicle.autoDraw = True
     g.time_text[0].autoDraw = True
     g.time_text[1].autoDraw = True
     for i in range(n_trials):
         success = False
         while not success: #keep repeating while subject has false starts
             three_beeps(n_trials - i)
-            success = speed_stop_trial()
+            success = speed_stop_trial(threshold = False) 
             StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
         g.trial = g.trial + 1 #increment trial number
-    g.car.autoDraw = False
+    g.vehicle.autoDraw = False
     g.stop_sign.autoDraw=False
     g.time_text[0].autoDraw = False
     g.time_text[1].autoDraw = False
@@ -278,8 +327,9 @@ def speed_stop_block_traction(n_trials):
     """
     Function to run block with traction.
     """
+    g.vehicle = g.motorcycle
     g.stop_sign.autoDraw = True
-    g.car.autoDraw = True
+    g.vehicle.autoDraw = True
     g.time_text[0].autoDraw = True
     g.time_text[1].autoDraw = True
     for i in range(n_trials):
@@ -288,12 +338,13 @@ def speed_stop_block_traction(n_trials):
         g.dy = 0
         trial_length = 10 # All trials are 10 seconds
         success = False
-        while not success: #keep repeating while subject has false starts
-            three_beeps(n_trials - i)
-            success = speed_stop_trial(trial_length)
-            StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
+        #while not success: #keep repeating while subject has false starts
+        three_beeps(n_trials - i)
+        success = speed_stop_trial(trial_length, threshold=False)
+        StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
+
         g.trial = g.trial + 1 #increment trial number
-    g.car.autoDraw = False
+    g.vehicle.autoDraw = False
     g.stop_sign.autoDraw=False
     g.time_text[0].autoDraw = False
     g.time_text[1].autoDraw = False
@@ -331,48 +382,55 @@ def run_instructions_joystick(instruct_schedule_file, g):
 
 def do_one_slide_joystick(slide, isound, directory, g):
     """
-    
+    Run one slide of joystick instructions
     """
+    # Allow the JOystick have some time to update before 
+    #StimToolLib.just_wait(g.clock, g.clock.getTime() + .2)
+    time.sleep(.1)
+
     if slide[0] == 'DEMO':
-        g.car.pos = g.car_start_pos#reset car position
+        g.vehicle = g.car #TODO make demo work with motorcycle too
+        g.vehicle.pos = g.vehicle_start_pos#reset car position
         g.stop_sign.autoDraw = True
-        g.car.autoDraw = True
+        g.vehicle.autoDraw = True
         try:
-            while g.car.pos[1] < 2.85:
+            while g.vehicle.pos[1] < 2.85:
                 StimToolLib.check_for_esc()
-                g.car.pos = [0, min(g.car.pos[1] + g.B / 120, 2.85)] #g.B is maximum speed in cm/s--go at half speed for demo
+                g.vehicle.pos = [0, min(g.vehicle.pos[1] + g.B / 120, 2.85)] #g.B is maximum speed in cm/s--go at half speed for demo
                 g.win.flip()
             StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
         except StimToolLib.QuitException:
             g.stop_sign.autoDraw = False
-            g.car.autoDraw = False
+            g.vehicle.autoDraw = False
             return -1
         g.stop_sign.autoDraw = False
-        g.car.autoDraw = False
+        g.vehicle.autoDraw = False
         g.win.flip()
         return 1
+
     if slide[0] == 'PRACTICE':
-        g.car.pos = g.car_start_pos
+        g.vehicle.pos = g.vehicle_start_pos
         g.stop_sign.autoDraw = True
-        g.car.autoDraw = True
+        g.vehicle.autoDraw = True
         g.win.flip() #display initial screen--car on bottom
         try:
             drive_car(20, False)
         except StimToolLib.QuitException:
-            g.car.autoDraw = False
+            g.vehicle.autoDraw = False
             g.stop_sign.autoDraw = False
             return -1
-        g.car.autoDraw = False
+        g.vehicle.autoDraw = False
         g.stop_sign.autoDraw = False
         g.win.flip()
         return 1
-    image = visual.ImageStim(g.win, image=os.path.join(directory, slide[0]), units = 'pix')
+    image = visual.ImageStim(g.win, image=os.path.join(directory, slide[0]), units='pix')
     try:
         image.size = [ g.session_params['screen_x'], g.session_params['screen_y'] ]
     except:
         pass
     s=isound
     advance_time = float(slide[2])
+
     #if it's -1, don't advance, if it's 0, advance at the end of the sound, if it's positive, advance after that amount of time
     wait_z = False
     if advance_time == -1:
@@ -388,7 +446,16 @@ def do_one_slide_joystick(slide, isound, directory, g):
     
     image.draw()
     g.win.flip()
+    event.clearEvents()
+    image.draw()
+    g.win.flip()
+    event.clearEvents()
+    image.draw()
+    g.win.flip()
+
+    
     k = None #initialize k
+    
     if s:
         s.play()
         advance_time = advance_time - s.getDuration() #since we're waiting for the duration of s, decrease advance_time by that amount--allows for e.g. advance_time of 5s with a sound of 3s->wait 2s after the sound ends
@@ -402,31 +469,43 @@ def do_one_slide_joystick(slide, isound, directory, g):
             kl = ['z', 'a']
         
         timeout=False
-        now=g.clock.getTime()       
-        try:
-            g.joystick = joystick.Joystick(0) 
-            while 1:
-                #if not g.session_params['joystick']: break # Break out of this if wer're not using a joystick
-                if g.clock.getTime() > now + advance_time:
-                    timeout=True 
-                    break
-                k=event.getKeys(keyList = kl)
-                if k!=[]:
-                    break
-                if g.joystick.getButton(g.session_params['joy_forward']) or g.joystick.getButton(g.session_params['joy_backward']):
-                    break
-                image.draw()
-                event.clearEvents()
-                g.win.flip()
-        except (AttributeError,IndexError):
-            k = event.waitKeys(keyList = kl, maxWait=advance_time)
+        now=g.clock.getTime()
+      
+        event.clearEvents()
+        time.sleep(.5)
+        g.joy.getButton(g.session_params['joy_forward'])
+        g.joy.getButton(g.session_params['joy_backward'])
+
+        print(image._imName)
+        print(g.joy.getButton(g.session_params['joy_forward']))
+        while 1:
+            #if not g.session_params['joystick']: break # Break out of this if wer're not using a joystick
+            if g.clock.getTime() > now + advance_time:
+                timeout=True 
+                print('timed out')
+                break
+            k=event.getKeys(keyList = kl)
+            if k!=[]:
+                print('pressed key')
+                break
+            if g.joy.getButton(g.session_params['joy_forward']) or g.joy.getButton(g.session_params['joy_backward']):
+                print('joystick clicked')
+                break
+            image.draw()
+            event.clearEvents()
+            g.win.flip()
+            #print('in loop')
+            #print(image._imName)
+            #print(g.joy.getButton(g.session_params['joy_forward']))
+            #time.sleep(.1)
+
 
     if s: #stop the sound if it's still playing
         s.stop()
     try:
-        if g.joystick.getButton(g.session_params['joy_forward']) or timeout:
+        if g.joy.getButton(g.session_params['joy_forward']) or timeout:
             retval = 1
-        elif g.joystick.getButton(g.session_params['joy_backward']):
+        elif g.joy.getButton(g.session_params['joy_backward']):
             retval = -1
     except (AttributeError, UnboundLocalError, IndexError):
         joystick_not_used=True
@@ -443,40 +522,40 @@ def do_one_slide_joystick(slide, isound, directory, g):
     elif k[0] == g.session_params['left']:
         retval = -1
     elif k[0] == 'escape':
-        raise QuitException()
+         raise StimToolLib.QuitException()
     return retval
 
 def do_one_slide(slide, directory, g):
     if slide[0] == 'DEMO':
-        g.car.pos = g.car_start_pos#reset car position
+        g.vehicle.pos = g.vehicle_start_pos#reset car position
         g.stop_sign.autoDraw = True
-        g.car.autoDraw = True
+        g.vehicle.autoDraw = True
         try:
-            while g.car.pos[1] < 2.85:
+            while g.vehicle.pos[1] < 2.85:
                 StimToolLib.check_for_esc()
-                g.car.pos = [0, min(g.car.pos[1] + g.B / 120, 2.85)] #g.B is maximum speed in cm/s--go at half speed for demo
+                g.vehicle.pos = [0, min(g.vehicle.pos[1] + g.B / 120, 2.85)] #g.B is maximum speed in cm/s--go at half speed for demo
                 g.win.flip()
             StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
         except StimToolLib.QuitException:
             g.stop_sign.autoDraw = False
-            g.car.autoDraw = False
+            g.vehicle.autoDraw = False
             return -1
         g.stop_sign.autoDraw = False
-        g.car.autoDraw = False
+        g.vehicle.autoDraw = False
         g.win.flip()
         return 1
     if slide[0] == 'PRACTICE':
-        g.car.pos = g.car_start_pos
+        g.vehicle.pos = g.vehicle_start_pos
         g.stop_sign.autoDraw = True
-        g.car.autoDraw = True
+        g.vehicle.autoDraw = True
         g.win.flip() #display initial screen--car on bottom
         try:
             drive_car(20, False)
         except StimToolLib.QuitException:
-            g.car.autoDraw = False
+            g.vehicle.autoDraw = False
             g.stop_sign.autoDraw = False
             return -1
-        g.car.autoDraw = False
+        g.vehicle.autoDraw = False
         g.stop_sign.autoDraw = False
         g.win.flip()
         return 1
@@ -532,7 +611,7 @@ def move_go_instruct(n_trials):
         StimToolLib.wait_start(g.win)
     
 def speed_stop_instruct(n_trials):
-    run_instructions_joystick(os.path.join(os.path.dirname(__file__), 'media', 'instructions', 'DR_instruct_schedule_JOY_SS.csv'), g)
+    run_instructions_joystick(os.path.join(os.path.dirname(__file__), 'media', 'instructions', g.run_params['instruction_schedule']), g)
     if g.session_params['scan']:
         StimToolLib.wait_scan_start(g.win)
     else:
@@ -560,16 +639,29 @@ def do_one_block(block_type, block_length):
         speed_stop_block(block_length)
 
     # Speed Stop with differente traction
-    # foramt for block type would be something like 30a, 32b, 31c
-    # 1st digit means it's a speed stop block
+ 
+    # 1st digit means the condition, either 3 or 4
     # 2nd digit means it's the traction control value (g.C)
     if (len(block_type) == 2):
         g.trial_type = block_type
 
-        # Ths LSB is the traction g.C value. 30 = 0, 31 = 1, 32 = 2
-        g.C = float(block_type[1])
-    
-        speed_stop_block_traction(block_length)
+        if block_type[0] == '3':
+            # Use the sensitivity Condition
+            # The LSB is the sensitivity values.
+            # High / Mid /Low 
+            # 40: High, 41: Mid , 42: Low
+            g.condition = 'velocity' # b
+            g.B = g.sensitivity_map[block_type[1]]
+            speed_stop_block(block_length)
+        
+        if block_type[0] == '4':
+            # Use ICY Condition
+            # Ths LSB is the traction g.C value. 30 = 0, 31 = 1, 32 = 2
+            g.condition = 'acceleration'
+            g.C = float(block_type[1])
+            speed_stop_block_traction(block_length)
+
+
 
     if block_type == '4': #break
         start_time = g.clock.getTime()
@@ -596,12 +688,18 @@ def do_one_block(block_type, block_length):
         start_time = g.clock.getTime()
         g.win.flip()
         StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['BREAK_ONSET'], start_time, 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
-        text_dict = {
-            '0': "This is a low traction block",
-            '1': "This is a medium tracton block",
-            '2': "This is a high traction block"
-        }
-
+        if (block_type[0] == '3'):
+            text_dict = {
+                '0': "sensitivity: extralow", # g.C of 0, does mean its more slick/slippery
+                '1': "sensitivity: low",
+                '2': "sensitivity: high"
+            } 
+        if block_type[0] == '4':
+            text_dict = {
+                '0': "slickness: high", # g.C of 0, does mean its more slick/slippery
+                '1': "slickness: medium",
+                '2': "slickness: low"
+            }
         g.toptext.text = text_dict[block_type[2]]
         g.toptext.draw()
         g.fix.draw()
@@ -614,6 +712,61 @@ def do_one_block(block_type, block_length):
 
     StimToolLib.just_wait(g.clock, g.clock.getTime() + 1) #one second pause at the end of each block so the next one doesn't start immediately
 
+
+def counterBalance(block_types):
+    """
+    Reverse orders the block based on subject id
+    Also, don't reverse if it'a practic run
+    """
+
+    if not g.session_params['scan']:
+        print('not a scan, do not reverse')
+        return block_types
+
+    # If subject id is even, return as is, if not, reverse it.
+    id_number = ''
+    while True:
+        try:
+            id_number = int(g.session_params['SID'][2:]) # returns only the numeric nubmers. BM123 -> 123
+            break
+        except Exception as e:
+            myDlg = gui.Dlg(title = 'Subject ID Correction')
+            myDlg.addText('ID must be 5 characters and end in 3 numbers, apparently it does not')
+            myDlg.addField('ID', initial='')
+            myDlg.show()
+            thisInfo = myDlg.data
+            sid = thisInfo[0]
+            g.session_params['SID'] = sid
+            print(e)
+    
+    if id_number %2 == 0: return block_types # Event
+
+    # If it gets past here it must mean it's an odd number
+
+    # Make list of tuples for non '2' trial
+    order_trials = []
+    for idx, block in enumerate(block_types):
+        if block == '2': continue
+        if block[0] == '5': order_trials.append([block, block_types[idx + 1 ]])
+
+    
+    order_trials.reverse() # reverse the order
+
+    # Now put it back into a list
+    new_order = []
+
+    # If there is an instruction block in the schedule added it
+    if block_types[0] == '2': new_order.append('2')
+
+    for block in order_trials:
+        new_order.append(block[0])
+        new_order.append(block[1])
+    
+    print('new order:')
+    print(new_order)
+    return new_order
+
+
 def run(session_params, run_params):
     global g
     g = GlobalVars()
@@ -625,6 +778,12 @@ def run(session_params, run_params):
         g.status = 0
     except StimToolLib.QuitException as q:
         g.status = -1
+    
+    ### IMPORTANT LINE! ###
+    # Correctly close device after each run
+    # This is so that the next run when using joystick doesn't have errors polling x/y postions.
+    g.joy._device.close()
+    #######################
     StimToolLib.task_end(g)
     return g.status
         
@@ -665,7 +824,17 @@ def run_try():
     block_types,junk,block_lengths,junk = StimToolLib.read_trial_structure(schedule_file, g.win, g.msg)
     block_lengths = block_lengths[0] 
 
+    # Counterbalancing Schedule
+    print('counterbalancing')
+    print('Before')
+    print(block_types)
+    #don't worry about counterbalancing for now
+    #block_types = counterBalance(block_types)
+    print('After')
+    print(block_types)
     
+
+
     start_time = data.getDateStr()
     
     param_file = g.run_params['run'][0:-9] + '.params' #every .schedule file can (probably should) have a .params file associated with it to specify running parameters (including part of the output filename)
@@ -687,9 +856,10 @@ def run_try():
     g.output.write('Administrator:,' + g.session_params['admin_id'] + ',Original File Name:,' + fileName + ',Time:,' + start_time + ',Parameter File:,' +  schedule_file + ',Event Codes:,' + str(sorted_events) + '\n')
     g.output.write('trial_number,trial_type,event_code,absolute_time,response_time,response,result\n')
 
+    g.motorcycle = visual.ImageStim(g.win, os.path.join(os.path.dirname(__file__),'media/motorcycle_new.png'), units='cm', interpolate=True)
     g.car = visual.ImageStim(g.win, os.path.join(os.path.dirname(__file__),'media/car2.bmp'), units='cm', interpolate=True, mask=os.path.join(os.path.dirname(__file__),'media/car_mask.bmp'))
-    g.bar_green = visual.ImageStim(g.win, os.path.join(os.path.dirname(__file__),'media/bar_green.png'), pos=(g.bar_x, 0), units='pix')
-    g.bar_blue = visual.ImageStim(g.win, os.path.join(os.path.dirname(__file__),'media/bar_blue.png'), pos=(g.bar_x, 0), units='pix')
+    g.bar_green = visual.ImageStim(g.win, os.path.join(os.path.dirname(__file__),'media/bar_green.png'), pos=(g.bar_x, 0), units='norm')
+    g.bar_blue = visual.ImageStim(g.win, os.path.join(os.path.dirname(__file__),'media/bar_blue.png'), pos=(g.bar_x, 0), units='norm')
     g.stop_sign = visual.ImageStim(g.win, os.path.join(os.path.dirname(__file__),'media/stop.png'), pos=(0, g.stop_y), units='cm', interpolate=True)
     g.target = visual.ImageStim(g.win, os.path.join(os.path.dirname(__file__),'media/circle_white.png'), pos=[6, 0], units='cm')
     g.sound_correct = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/correctsound.aiff'), volume=0.08)
@@ -699,18 +869,44 @@ def run_try():
     g.sound_beep2 = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/beep2.aiff'), volume=0.08)
     g.sound_timeout = sound.Sound(value=os.path.join(os.path.dirname(__file__), 'media/timeoutsound.aiff'), volume=0.08)
     
-    g.time_text.append(visual.TextStim(g.win, text="10s", units='pix', height=25, color=[1,1,1], pos=[g.bar_x + 45,550]))
-    g.time_text.append(visual.TextStim(g.win, text="0s", units='pix', height=25, color=[1,1,1], pos=[g.bar_x + 45,0]))
+    g.time_text.append(visual.TextStim(g.win, text="10s", units='norm', height=.07, color=[1,1,1], pos=[g.bar_x - .1,g.time_bar_max_height - .07]))
+    g.time_text.append(visual.TextStim(g.win, text="0s", units='norm', height=.07, color=[1,1,1], pos=[g.bar_x - .1,0]))
     
-    g.fix = visual.TextStim(g.win, text="X", units='pix', height=50, color=[1,1,1], pos=[0,0], bold=True)
+    g.fix = visual.TextStim(g.win, text="+", units='pix', height=50, color=[1,1,1], pos=[0,0], bold=True)
     g.toptext = visual.TextStim(g.win, text="", units='pix', height=50, color=[1,1,1], pos=[0,200], bold=True)
+
+    g.grating = visual.GratingStim(g.win, pos=(0.5, 0),tex="sin", mask="gauss",color=[1.0, 0.5, -1.0],size=(0.2, .2), sf=(2, 0))
     
     StimToolLib.task_start(StimToolLib.DRIVE_CODE, g)
     g.win.flip()
+
+    run_instructions_joystick(os.path.join(os.path.dirname(__file__), 'media', 'instructions', g.run_params['instruction_schedule']), g)
+    if g.session_params['scan']:
+        StimToolLib.wait_scan_start(g.win)
+    else:
+        StimToolLib.wait_start(g.win)
+
+    now = g.clock.getTime()
+    StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['TASK_ONSET'], now, 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
+
+    # Lead in 10s Fixation Time
+    now = g.clock.getTime()
+    g.win.flip()
+    g.fix.draw()
+    g.win.flip()
+    StimToolLib.just_wait(g.clock, now + 10 ) # 10 second fixation lead in time
+
     g.trial = 0 #initialize trial number
     #StimToolLib.show_title(g.win, g.title)
     for i in range(len(block_types)):     
         do_one_block(block_types[i], int(block_lengths[i]))
+
+    # Lead out 10s Fixation Time
+    now = g.clock.getTime()
+    g.win.flip()
+    g.fix.draw()
+    g.win.flip()
+    StimToolLib.just_wait(g.clock, now + 10 ) # 10 second fixation lead in time
 
 
 
