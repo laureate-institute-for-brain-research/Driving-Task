@@ -1,2 +1,3 @@
 run_id __DR-R1-_BEH
 stick_move_threshold .09
+instruction_schedule 'DR_instruct_schedule_JOY_SS.csv'

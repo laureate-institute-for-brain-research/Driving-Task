@@ -880,7 +880,13 @@ def run_try():
     StimToolLib.task_start(StimToolLib.DRIVE_CODE, g)
     g.win.flip()
 
-    run_instructions_joystick(os.path.join(os.path.dirname(__file__), 'media', 'instructions', g.run_params['instruction_schedule']), g)
+
+    try:
+        run_instructions_joystick(os.path.join(os.path.dirname(__file__), 'media', 'instructions', g.run_params['instruction_schedule']), g)
+    except:
+        pass
+
+
     if g.session_params['scan']:
         StimToolLib.wait_scan_start(g.win)
     else:
