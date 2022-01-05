@@ -157,7 +157,7 @@ def show_slides(slides, win):
 def show_title(win, title):
     #win is the window to draw in, msg is the textStim to use, and instructions is a list of strings to display--one item per screen
     msg = visual.TextStim(win,text=str(title),units='pix',pos=[0,0],color=[win.color[0] * -1, win.color[1] * -1, win.color[2] * -1] ,height=100,wrapWidth=int(1600)) #text color should be opposite of window color
-    msg2 = visual.TextStim(win,text="",units='pix',pos=[0,-450],color=[win.color[0] * -1, win.color[1] * -1, win.color[2] * -1] ,height=20,wrapWidth=int(1600)) 
+    msg2 = visual.TextStim(win,text="",units='pix',pos=[0,-250],color=[win.color[0] * -1, win.color[1] * -1, win.color[2] * -1] ,height=20,wrapWidth=int(1600)) 
     msg2.setText("Press ENTER to continue")
     msg.draw()
     msg2.draw()
@@ -170,7 +170,7 @@ def show_title(win, title):
 def show_instructions(win, instructions):
     #win is the window to draw in, msg is the textStim to use, and instructions is a list of strings to display--one item per screen
     msg = visual.TextStim(win,text="",units='pix',pos=[0,0],color=[win.color[0] * -1, win.color[1] * -1, win.color[2] * -1] ,height=30,wrapWidth=int(1600)) #text color should be opposite of window color
-    msg2 = visual.TextStim(win,text="",units='pix',pos=[0,-450],color=[win.color[0] * -1, win.color[1] * -1, win.color[2] * -1] ,height=20,wrapWidth=int(1600)) 
+    msg2 = visual.TextStim(win,text="",units='pix',pos=[0,-250],color=[win.color[0] * -1, win.color[1] * -1, win.color[2] * -1] ,height=20,wrapWidth=int(1600)) 
     msg2.setText("Press ENTER to continue")
     for i in instructions:
         msg.setText(i)
