@@ -1,5 +1,5 @@
 run_id __DR-R3-_BEH
 stick_move_threshold .09
 instruction_schedule 'study-TaskDev_task-DR_run-3_instructschedule.csv'
-max_trial_time 6
+max_run_time 500
 A -0.09193548387096774
