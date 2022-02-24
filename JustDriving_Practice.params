@@ -5,7 +5,7 @@ right right
 select space
 auto_advance True
 session_id T0
-output_dir 'C:/StimTool/data/'
+output_dir 'C:/StimToolData/data/'
 redirect_output True
 joy_forward 0
 joy_backward 3

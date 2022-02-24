@@ -49,7 +49,7 @@ class GlobalVars:
         # Dictionary for mapping schedule block types to self.B
         self.sensitivity_map  = {
                 '0': 7.5, # Low Sensitivity
-                '1': 15, # Medium Sensitivty # the default
+                '1': 15.0, # Medium Sensitivty # the default
                 '2': 22.5, #  High Sensitivity
             }
         self.A = -0.35 #equilibrium point--makes it so the subject has to continue holding the stick forward just a little to remain stopped at the line
@@ -134,10 +134,10 @@ def update_car(): #update position of car based on joy position
     joy_x_pos = g.joy.getX() #save this value, just in case it ends up being interesting
     
     #g.grating.setPos((joy_x_pos - 1 , joy_y_pos))
-
+    
     if g.condition == 'velocity':
         # Velocity Condition, also the default condition
-        g.dy =  (g.A*g.vehicle.pos[1] + g.B*joy_y_pos) * dt #change in car position: A term gives resting point (at 0.35) and B gives velocity based on joystick position
+        g.dy =  (g.A*(g.vehicle.pos[1] + 8.0) + g.B*joy_y_pos) * dt #change in car position: A term gives resting point (at 0.35) and B gives velocity based on joystick position
      
     else:
 
@@ -152,7 +152,7 @@ def update_car(): #update position of car based on joy position
     
 
     #dy = 5 / 60.0
-    #now = g.clock.getTime()
+    now = g.clock.getTime()
     if g.response_period_start == None: #first response, record the time and mark the event
         g.response_period_start = now
         StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['RESPONSE_PERIOD_ONSET'], now, 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
@@ -278,13 +278,13 @@ def drive_car(duration, draw_timer):
 
 
 def speed_stop_trial(trial_length = 10, threshold=True):
-    #TODO make threshold a config param
     #g.win.flip() #display initial screen--car on bottom
     joy_pos = -g.joy.getY()
     g.last_t = None
-    # If threshold is set, then check move threshold to repeat
+    # If threshold is set, and we are still within the max_set trial time
+    # # then check move threshold to repeat
     # If not, then then don't check if in middle
-    if threshold:
+    if threshold and ( (g.clock.getTime() - g.trial_start_time) < g.max_trial_time):
         if abs(joy_pos) > g.stick_move_threshold: #will be true if the subject was holding the stick off center at the end of the countdown
                 g.sound_error.play()
                 StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['FALSE_START'], g.clock.getTime(), 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
@@ -310,11 +310,13 @@ def speed_stop_block(n_trials):
     g.vehicle.autoDraw = True
     g.time_text[0].autoDraw = True
     g.time_text[1].autoDraw = True
+    trial_duration = 0 # records the duration of how long it's been
     for i in range(n_trials):
         success = False
+        g.trial_start_time = g.clock.getTime()
         while not success: #keep repeating while subject has false starts
             three_beeps(n_trials - i)
-            success = speed_stop_trial(threshold = False) 
+            success = speed_stop_trial(threshold = True) 
             StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
         g.trial = g.trial + 1 #increment trial number
     g.vehicle.autoDraw = False
@@ -338,10 +340,11 @@ def speed_stop_block_traction(n_trials):
         g.dy = 0
         trial_length = 10 # All trials are 10 seconds
         success = False
-        #while not success: #keep repeating while subject has false starts
-        three_beeps(n_trials - i)
-        success = speed_stop_trial(trial_length, threshold=False)
-        StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
+        g.trial_start_time = g.clock.getTime()
+        while not success: #keep repeating while subject has false starts
+            three_beeps(n_trials - i)
+            success = speed_stop_trial(trial_length, threshold=True)
+            StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
 
         g.trial = g.trial + 1 #increment trial number
     g.vehicle.autoDraw = False
@@ -846,6 +849,15 @@ def run_try():
     try:
         g.stick_move_threshold = g.run_params['stick_move_threshold']
     except:
+        pass
+    try:
+        g.max_trial_time = g.run_params['max_trial_time']
+    except:
+        pass
+    try:
+        g.A = float(g.run_params['A'])
+    except Exception as e:
+        print(e)
         pass
     
     #g.prefix = 'DR-' + g.session_params['SID'] + '-Admin_' + g.session_params['raID'] + '-run_' + str(g.run_params['run']) + '-' + start_time 
