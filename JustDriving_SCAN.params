@@ -6,7 +6,7 @@ select space
 auto_advance True
 session_id T0
 output_dir 'C:/StimToolData/data/'
-redirect_output True
+redirect_output False
 joy_forward 0
 joy_backward 3
 screen_x 1024

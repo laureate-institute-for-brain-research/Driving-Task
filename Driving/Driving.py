@@ -132,6 +132,8 @@ def update_car(): #update position of car based on joy position
   
     joy_y_pos = -g.joy.getY() #negate so that push is positive, pull is negative
     joy_x_pos = g.joy.getX() #save this value, just in case it ends up being interesting
+
+    print(g.joy.getY())
     
     #g.grating.setPos((joy_x_pos - 1 , joy_y_pos))
     
@@ -280,11 +282,15 @@ def drive_car(duration, draw_timer):
 def speed_stop_trial(trial_length = 10, threshold=True):
     #g.win.flip() #display initial screen--car on bottom
     joy_pos = -g.joy.getY()
+    #text = visual.TextStim(g.win, g.you.getY(), pos = (0,0), units = 'norm')
+    #text.setAutoDraw(True)
+    # print()
     g.last_t = None
     # If threshold is set, and we are still within the max_set trial time
     # # then check move threshold to repeat
     # If not, then then don't check if in middle
     if threshold:
+        print(abs(g.joy.getY()))
         if abs(joy_pos) > g.stick_move_threshold: #will be true if the subject was holding the stick off center at the end of the countdown
                 g.sound_error.play()
                 StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['FALSE_START'], g.clock.getTime(), 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
