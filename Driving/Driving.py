@@ -65,6 +65,14 @@ class GlobalVars:
         self.target_pos = 3.35 #position to change colors
         self.response_period_start = None #will keep track of when the current response period began--used to compute response time in output
         self.last_t = None
+        self.fast_tolerence_onset = None
+        
+        # Feedback condition texts
+        self.feedback_text_dict = {
+            'slow': 'try harder',
+            'fast': 'Good Job!'
+        }
+        self.feedback_text_string = self.feedback_text_dict['fast'] # Text display after trial 
 
 event_types = {
     'INSTRUCT_ONSET':1,
@@ -133,7 +141,14 @@ def update_car(): #update position of car based on joy position
     joy_y_pos = -g.joy.getY() #negate so that push is positive, pull is negative
     joy_x_pos = g.joy.getX() #save this value, just in case it ends up being interesting
 
-    print(g.joy.getY())
+    #print(g.joy.getY())
+    #print('%f - %f - %f' % (g.vehicle.pos[1], g.stop_sign.pos[1], g.fast_tolerence))
+
+    # Mark time when it crosses the tolerence line
+    if not g.fast_tolerence_onset:
+        if ( (g.vehicle.pos[1]) > ( 3 - g.fast_tolerence)) and ( (g.vehicle.pos[1]) < ( 3 + g.fast_tolerence)):
+            g.fast_tolerence_onset = g.clock.getTime()
+            print('Tolerence Onset %f' % g.fast_tolerence_onset)
     
     #g.grating.setPos((joy_x_pos - 1 , joy_y_pos))
     
@@ -199,10 +214,11 @@ def move_go_trial(speed):
         g.win.flip()
         if not recorded_motion_start: #record motion start here so it is *after* the first flip() with the car moved--slightly more accurate (1-16ms) than if this were before the loop
             recorded_motion_start = True
-            motion_start_time = g.clock.getTime()
-            StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['MOTION_ONSET'], motion_start_time, 'NA', 'NA', speed, g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
+            g.motion_start_time = g.clock.getTime()
+
+            StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['MOTION_ONSET'], g.motion_start_time, 'NA', 'NA', speed, g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
     g.response_period_start = g.clock.getTime()
-    StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['RESPONSE_PERIOD_ONSET'], g.response_period_start, g.response_period_start - motion_start_time , 'NA', g.vehicle.pos[1] + 8, g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
+    StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['RESPONSE_PERIOD_ONSET'], g.response_period_start, g.response_period_start - g.motion_start_time , 'NA', g.vehicle.pos[1] + 8, g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
     done = False
     complete_press_time = None #keep track of when the joy stick made it to the end
     while not done:
@@ -231,6 +247,7 @@ def move_go_block(n_trials):
     random.shuffle(g.move_go_speeds)
     speed_idx = 0 #keep track of which speed is next--will be reset to 0 when all speeds have been used
     for i in range(n_trials):
+        g.fast_tolerence_onset = None # Reset each trial
         if speed_idx == len(g.move_go_speeds):
             speed_idx = 0
             random.shuffle(g.move_go_speeds)
@@ -274,10 +291,26 @@ def drive_car(duration, draw_timer):
         if time_elapsed > duration:
             done = True
             g.sound_timeout.play()
+
+            g.feedback_text.text = get_feedback_text()
+            g.feedback_text.draw()
+            g.win.flip()
             StimToolLib.just_wait(g.clock, g.clock.getTime() + 2)
     g.response_period_start = None #reset this for the next time--update_car will set g.response_period_start the first time it's called
             
 
+def get_feedback_text():
+    """
+    Returns the feedback string condition.
+
+    """
+    # Vehicle Position gets with tolerence of stopsign in X amount of time
+    if g.response_period_start and g.fast_tolerence_onset:
+        if (g.fast_tolerence_onset - g.response_period_start) < g.fast_speed:
+            # Means this is a 'fast' triall
+            return g.feedback_text_dict['fast']
+
+    return g.feedback_text_dict['slow']
 
 def speed_stop_trial(trial_length = 10, threshold=True):
     #g.win.flip() #display initial screen--car on bottom
@@ -320,7 +353,7 @@ def speed_stop_block(n_trials):
     trial_duration = 0 # records the duration of how long it's been
     for i in range(n_trials):
         success = False
-
+        g.fast_tolerence_onset = None # Reset each trial
         # Don't to more trial if we reached our max_run_time
         if (g.clock.getTime() - g.task_start_time > g.max_run_time): break
 
@@ -345,6 +378,7 @@ def speed_stop_block_traction(n_trials):
     g.time_text[0].autoDraw = True
     g.time_text[1].autoDraw = True
     for i in range(n_trials):
+        g.fast_tolerence_onset = None # Reset each trial
         # set trial duration
         # trial_length = random.choice([9,10,11])
         g.dy = 0
@@ -870,6 +904,14 @@ def run_try():
     except Exception as e:
         print(e)
         pass
+    try:
+        g.fast_tolerence = float(g.run_params['fast_tolerence']) # the distance away from stop
+    except Exception as e:
+        pass
+    try:
+        g.fast_speed = float(g.run_params['fast_speed']) # the max time in seconds to be consider a 'fast' condition
+    except Exception as e:
+        pass
     
     #g.prefix = 'DR-' + g.session_params['SID'] + '-Admin_' + g.session_params['raID'] + '-run_' + str(g.run_params['run']) + '-' + start_time 
     #fileName = os.path.join(os.path.dirname(__file__), 'data/' + g.prefix +  '.csv')
@@ -897,6 +939,8 @@ def run_try():
     
     g.fix = visual.TextStim(g.win, text="+", units='pix', height=50, color=[1,1,1], pos=[0,0], bold=True)
     g.toptext = visual.TextStim(g.win, text="", units='pix', height=50, color=[1,1,1], pos=[0,200], bold=True)
+
+    g.feedback_text = visual.TextStim(g.win, text=g.feedback_text_string, units='pix', height=50, color=[1,1,1], pos=[300,0], bold=True)
 
     g.grating = visual.GratingStim(g.win, pos=(0.5, 0),tex="sin", mask="gauss",color=[1.0, 0.5, -1.0],size=(0.2, .2), sf=(2, 0))
     
