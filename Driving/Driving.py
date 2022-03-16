@@ -66,6 +66,7 @@ class GlobalVars:
         self.response_period_start = None #will keep track of when the current response period began--used to compute response time in output
         self.last_t = None
         self.fast_tolerence_onset = None
+        self.reached_max_runtime = False
         
         # Feedback condition texts
         self.feedback_text_dict = {
@@ -326,6 +327,8 @@ def speed_stop_trial(trial_length = 10, threshold=True):
         print(abs(g.joy.getY()))
         if abs(joy_pos) > g.stick_move_threshold: #will be true if the subject was holding the stick off center at the end of the countdown
                 g.sound_error.play()
+                g.errorText.draw()
+                g.win.flip()
                 StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['FALSE_START'], g.clock.getTime(), 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
                 StimToolLib.just_wait(g.clock, g.clock.getTime() + 3)
                 return False #will cause this trial to be repeated
@@ -355,9 +358,12 @@ def speed_stop_block(n_trials):
         success = False
         g.fast_tolerence_onset = None # Reset each trial
         # Don't to more trial if we reached our max_run_time
-        if (g.clock.getTime() - g.task_start_time > g.max_run_time): break
+        if g.reached_max_runtime: break
 
-        while not success: #keep repeating while subject has false starts
+        while not success: #keep repeating while subject has false 
+            if (g.clock.getTime() - g.task_start_time > g.max_run_time):
+                g.reached_max_runtime = True
+                break
             three_beeps(n_trials - i)
             success = speed_stop_trial(threshold = True) 
             StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
@@ -385,9 +391,14 @@ def speed_stop_block_traction(n_trials):
         trial_length = 10 # All trials are 10 seconds
         success = False
         # Don't to more trial if we reached our max_run_time
-        if (g.clock.getTime() - g.task_start_time > g.max_run_time): break
+        if (g.clock.getTime() - g.task_start_time > g.max_run_time):
+            g.reached_max_runtime = True
+            break
         while not success: #keep repeating while subject has false starts
             three_beeps(n_trials - i)
+            if (g.clock.getTime() - g.task_start_time > g.max_run_time):
+                g.reached_max_runtime = True
+                break
             success = speed_stop_trial(trial_length, threshold=True)
             StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
 
@@ -428,6 +439,30 @@ def run_instructions_joystick(instruct_schedule_file, g):
         i = max(i + do_one_slide_joystick(slides[i], isounds[i], directory, g), 0) #do_one_slide may increment or decrement i, depending on whether session_params['right'] or session_params['left'] is pressed--don't let them go back on the first slide
     #core.rush(Fals
 
+
+def show_demo_video(directory):
+    """
+    Function that plays the demo video
+    """
+    demo_mov = visual.MovieStim3(g.win, os.path.join(directory, 'demo_video', 'driving_demo.mov'), 
+        size=(g.win.size[0], g.win.size[1]), flipVert=False, flipHoriz=False, loop=False)
+
+    #screen_mov = visual.MovieStim3(g.win, os.path.join(directory, 'demo_video', 'screen_demo.mp4'), 
+    #    size=(g.win.size[0], g.win.size[1]), flipVert=False, flipHoriz=False, loop=False)
+
+    #joystick_mov = visual.MovieStim3(g.win, os.path.join(directory, 'demo_video', 'joystick_demo.mp4'),
+    #    pos = [300,-200], size=(g.win.size[0] / 4, g.win.size[1] / 4), flipVert=False, flipHoriz=False, loop=False)
+
+
+    while demo_mov.status != visual.FINISHED:
+        demo_mov.draw()
+        #joystick_mov.draw()
+        g.win.flip()
+        if (event.getKeys(['z'])):
+            break
+    
+
+
 def do_one_slide_joystick(slide, isound, directory, g):
     """
     Run one slide of joystick instructions
@@ -435,6 +470,9 @@ def do_one_slide_joystick(slide, isound, directory, g):
     # Allow the JOystick have some time to update before 
     #StimToolLib.just_wait(g.clock, g.clock.getTime() + .2)
     time.sleep(.1)
+    if slide[0] == 'DEMO_VIDEO':
+        show_demo_video(directory)
+        return 1
 
     if slide[0] == 'DEMO':
         g.vehicle = g.car #TODO make demo work with motorcycle too
@@ -941,6 +979,7 @@ def run_try():
     g.toptext = visual.TextStim(g.win, text="", units='pix', height=50, color=[1,1,1], pos=[0,200], bold=True)
 
     g.feedback_text = visual.TextStim(g.win, text=g.feedback_text_string, units='pix', height=50, color=[1,1,1], pos=[300,0], bold=True)
+    g.errorText = visual.TextStim(g.win, text="ERROR:\nCenter the joystick.", units='pix', height=40, color=[1,-1,-1], pos=[0,0], bold=True)
 
     g.grating = visual.GratingStim(g.win, pos=(0.5, 0),tex="sin", mask="gauss",color=[1.0, 0.5, -1.0],size=(0.2, .2), sf=(2, 0))
     
@@ -972,7 +1011,8 @@ def run_try():
     g.trial = 0 #initialize trial number
     #StimToolLib.show_title(g.win, g.title)
     for i in range(len(block_types)):
-        do_one_block(block_types[i], int(block_lengths[i]))
+        if not g.reached_max_runtime:
+            do_one_block(block_types[i], int(block_lengths[i]))
 
     # Lead out 10s Fixation Time
     now = g.clock.getTime()
