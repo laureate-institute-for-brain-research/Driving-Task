@@ -2,4 +2,6 @@ run_id __DR-R4-_BEH
 stick_move_threshold .2
 instruction_schedule 'study-TaskDev_task-DR_run-4_instructschedule.csv'
 max_run_time 500
-A -0.09193548387096774
+A 0
+fast_tolerence 1.5
+fast_speed 5
