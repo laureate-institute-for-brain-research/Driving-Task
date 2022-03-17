@@ -89,6 +89,7 @@ event_types = {
     'MOTION_RESPONSE_END':11,
     'BREAK_ONSET':12,
     'BREAK_END':13,
+    'FEEDBACK_ONSET': 14,
     'TASK_END':StimToolLib.TASK_END
     }
 
@@ -97,12 +98,17 @@ def update_target_and_wait(duration):
     start_time = g.clock.getTime()
     now = g.clock.getTime()
     while now - start_time < duration:
+        #print(g.joy.getY())
+        #print(g.joy._device.y)
+        #g.joy.getY()
         update_target_pos()
-        StimToolLib.check_for_esc()
+       # StimToolLib.check_for_esc()
         g.win.flip()
         now = g.clock.getTime()
 
 def three_beeps(trials_left):
+    #print(g.joy.getY())
+    g.joy.getY() # clear y pos
     g.vehicle.pos = g.vehicle_start_pos#reset car position
     g.msg.setText(str(trials_left) + ' trial(s) left in this block')
     g.msg.autoDraw = True
@@ -296,6 +302,8 @@ def drive_car(duration, draw_timer):
             g.feedback_text.text = get_feedback_text()
             g.feedback_text.draw()
             g.win.flip()
+            now = g.clock.getTime()
+            StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['FEEDBACK_ONSET'], now, 'NA', 'NA', g.feedback_text.text, g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
             StimToolLib.just_wait(g.clock, g.clock.getTime() + 2)
     g.response_period_start = None #reset this for the next time--update_car will set g.response_period_start the first time it's called
             
@@ -314,40 +322,57 @@ def get_feedback_text():
     return g.feedback_text_dict['slow']
 
 def speed_stop_trial(trial_length = 10, threshold=True):
-    #g.win.flip() #display initial screen--car on bottom
-    joy_pos = -g.joy.getY()
-    #text = visual.TextStim(g.win, g.you.getY(), pos = (0,0), units = 'norm')
-    #text.setAutoDraw(True)
-    # print()
+   # event.clearEvents()# flush
+    #print(g.joy.getY())
     g.last_t = None
+
     # If threshold is set, and we are still within the max_set trial time
     # # then check move threshold to repeat
     # If not, then then don't check if in middle
     if threshold:
-        print(abs(g.joy.getY()))
-        if abs(joy_pos) > g.stick_move_threshold: #will be true if the subject was holding the stick off center at the end of the countdown
-                g.sound_error.play()
+        joy_pos = abs(g.joy.getY())
+        print('Onset joy Pos: %s' % joy_pos)
+        if joy_pos > g.stick_move_threshold: #will be true if the subject was holding the stick off center at the end of the countdown
+            g.sound_error.play()
+            g.errorText.draw()
+            g.win.flip()
+            StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['FALSE_START'], g.clock.getTime(), 'NA', 'NA', str(g.joy.getY()), g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
+            false_start_onset = g.clock.getTime() + 2
+            #event.clearEvents()# flush
+           # g.joy.getY()
+            while g.clock.getTime() < false_start_onset:
+                #print('after:%s' % g.joy.getY())
                 g.errorText.draw()
                 g.win.flip()
-                StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['FALSE_START'], g.clock.getTime(), 'NA', 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
-                StimToolLib.just_wait(g.clock, g.clock.getTime() + 3)
-                return False #will cause this trial to be repeated
-        # #wait for response to begin the trial
-        # We removed this since we just want the timer to start regardless if the joystick is not in the center.
-        # while abs(g.joy.getY()) < g.stick_move_threshold:
-        #     StimToolLib.check_for_esc()
-        #     g.win.flip()
+           
+            return False #will cause this trial to be repeated
+
     g.response_period_start = g.clock.getTime()
     StimToolLib.mark_event(g.output, g.trial, g.trial_type, event_types['RESPONSE_PERIOD_ONSET'], g.response_period_start, g.response_period_start - g.third_beep_time , 'NA', 'NA', g.session_params['signal_parallel'], g.session_params['parallel_port_address'])
     drive_car(trial_length, True)
     return True #success, move on to the next trial
     
 
+def check_overtime():
+    """
+    Sets the reached_max_run time.
+    """
+    # Check the difference of how long it has been since task start
+    # by the allowed set max run time minus the lead out time.
+    # Lead out tiime is 10 seconds
+    
+    elapsed_time = g.clock.getTime() - g.task_start_time # current runtime elapsed time
+    time_left = g.max_run_time - elapsed_time 
 
+    # a valid trial takes about 12 seconds
+    # 22 = lead out time + extra trial
 
+    # So check if there's enough time left for the lead out and another trial
+    if time_left <= 22:
+
+        g.reached_max_runtime = True
 
 def speed_stop_block(n_trials):
-    
     g.vehicle = g.car
     g.stop_sign.autoDraw = True
     g.vehicle.autoDraw = True
@@ -360,13 +385,20 @@ def speed_stop_block(n_trials):
         # Don't to more trial if we reached our max_run_time
         if g.reached_max_runtime: break
 
-        while not success: #keep repeating while subject has false 
-            if (g.clock.getTime() - g.task_start_time > g.max_run_time):
-                g.reached_max_runtime = True
-                break
+         #keep repeating while if joystick is not centered 
+        while not success:
+            check_overtime()
+            if g.reached_max_runtime: break
             three_beeps(n_trials - i)
-            success = speed_stop_trial(threshold = True) 
-            StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
+            success = speed_stop_trial(threshold = True)
+            end_onset = g.clock.getTime() + 1
+            update_target_and_wait(1)
+            # g.timer_msg.setText('Trial starts in 3s')
+            # while g.clock.getTime() < end_onset: 
+            #     g.msg.draw()
+            #     g.timer_msg.draw()
+            #     g.win.flip()
+            #StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
         g.trial = g.trial + 1 #increment trial number
     g.vehicle.autoDraw = False
     g.stop_sign.autoDraw=False
@@ -390,18 +422,20 @@ def speed_stop_block_traction(n_trials):
         g.dy = 0
         trial_length = 10 # All trials are 10 seconds
         success = False
-        # Don't to more trial if we reached our max_run_time
-        if (g.clock.getTime() - g.task_start_time > g.max_run_time):
-            g.reached_max_runtime = True
-            break
+        
         while not success: #keep repeating while subject has false starts
+            check_overtime()
+            if g.reached_max_runtime: break
             three_beeps(n_trials - i)
-            if (g.clock.getTime() - g.task_start_time > g.max_run_time):
-                g.reached_max_runtime = True
-                break
             success = speed_stop_trial(trial_length, threshold=True)
-            StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
-
+            end_onset = g.clock.getTime() + 1
+            update_target_and_wait(1)
+            # g.timer_msg.setText('Trial starts in 3s')
+            # while g.clock.getTime() < end_onset:
+            #     g.msg.draw()
+            #     g.timer_msg.draw()
+            #     g.win.flip()
+            #StimToolLib.just_wait(g.clock, g.clock.getTime() + 1)
         g.trial = g.trial + 1 #increment trial number
     g.vehicle.autoDraw = False
     g.stop_sign.autoDraw=False
@@ -894,6 +928,8 @@ def run_try():
     nJoysticks=joystick.getNumJoysticks()
     if nJoysticks>0:
         g.joy = joystick.Joystick(0)
+        #print('joystick attr device')
+        #print(dir(g.joy._device))
     else:
         g.win.close()
         #try:
@@ -1011,8 +1047,8 @@ def run_try():
     g.trial = 0 #initialize trial number
     #StimToolLib.show_title(g.win, g.title)
     for i in range(len(block_types)):
-        if not g.reached_max_runtime:
-            do_one_block(block_types[i], int(block_lengths[i]))
+        if g.reached_max_runtime: break
+        do_one_block(block_types[i], int(block_lengths[i]))
 
     # Lead out 10s Fixation Time
     now = g.clock.getTime()
